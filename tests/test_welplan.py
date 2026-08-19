@@ -1,4 +1,4 @@
-from lunchbot.format_message import format_mattermost_message
+from lunchbot.message import format_message
 from lunchbot.welplan import (
     cards_to_day_menu,
     is_placeholder_image_bytes,
@@ -35,13 +35,13 @@ def test_format_matches_legacy_table() -> None:
         "HH": [{"name": "오징어주꾸미숙회", "calories": 135}, {"name": "포기김치", "calories": 0}],
     }
     menu = cards_to_day_menu(cards, details, "2026-08-19")
-    text = format_mattermost_message(menu)
+    text = format_message(menu)
 
     assert text.startswith("### :yum: 오늘의 점심 메뉴 :whatistodaylunch:")
     assert "| **브라운그릴** | **동방식객** | **모던키친** | **별미공방** |" in text
     assert "| **마이보글** | **추가배식대** |" in text
     assert "| **브라운그릴** | **동방식객** |\n" not in text
-    assert "![](https://img-welmenu.welstory.com/a.jpg)" in text
+    assert "![](https://img-welmenu.welstory.com/a.jpg =240x180)" in text
     assert "브로컬리" in text
     assert "<img" not in text
     assert "<br>" not in text
