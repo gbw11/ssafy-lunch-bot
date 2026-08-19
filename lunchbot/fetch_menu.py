@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from playwright.sync_api import FrameLocator
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
@@ -27,6 +29,19 @@ BOB_STATION_ORDER = (
 
 class BobssafyError(RuntimeError):
     pass
+
+
+def default_bobssafy_timeout_ms() -> int:
+    raw = os.getenv("BOBSSAFY_TIMEOUT_MS", "").strip()
+    if raw:
+        return int(raw)
+    if os.getenv("CI"):
+        return 45_000
+    return 90_000
+
+
+def _menu_poll_attempts() -> int:
+    return 2 if os.getenv("CI") else 4
 
 
 def is_welmenu_image_url(url: str) -> bool:
@@ -73,10 +88,12 @@ def _load_app_frame(page, url: str, timeout_ms: int) -> FrameLocator:
 
 
 def _wait_for_menu(app: FrameLocator, page, timeout_ms: int) -> str:
+    attempt_timeout = min(timeout_ms, 25_000 if os.getenv("CI") else timeout_ms)
     last_text = ""
-    for attempt in range(4):
-        page.wait_for_timeout(2500)
-        last_text = app.locator("body").inner_text(timeout=timeout_ms)
+    max_attempts = _menu_poll_attempts()
+    for attempt in range(max_attempts):
+        page.wait_for_timeout(1500 if os.getenv("CI") else 2500)
+        last_text = app.locator("body").inner_text(timeout=attempt_timeout)
         if LOGIN_ERROR in last_text:
             raise BobssafyError(
                 "BOB SSAFY가 메뉴 원본에 로그인하지 못한 상태입니다. "
@@ -84,12 +101,12 @@ def _wait_for_menu(app: FrameLocator, page, timeout_ms: int) -> str:
             )
         if "메인 메뉴" in last_text or "오늘의 메뉴" in last_text:
             try:
-                app.locator(MENU_READY).first.wait_for(timeout=15_000)
+                app.locator(MENU_READY).first.wait_for(timeout=10_000)
             except PlaywrightTimeoutError:
                 pass
             return last_text
-        if attempt < 3:
-            page.wait_for_timeout(4000)
+        if attempt < max_attempts - 1:
+            page.wait_for_timeout(2000 if os.getenv("CI") else 4000)
     raise BobssafyError("BOB SSAFY 페이지에서 메뉴 본문을 찾지 못했습니다.")
 
 
@@ -104,15 +121,16 @@ def _collect_image_urls(app: FrameLocator, timeout_ms: int) -> list[str]:
     return urls
 
 
-def fetch_menu_images(url: str, timeout_ms: int = 90_000) -> dict[str, str]:
+def fetch_menu_images(url: str, timeout_ms: int | None = None) -> dict[str, str]:
+    limit = timeout_ms if timeout_ms is not None else default_bobssafy_timeout_ms()
     with sync_playwright() as playwright:
         browser, context = _browser_context(playwright)
         page = context.new_page()
         try:
-            app = _load_app_frame(page, url, timeout_ms)
-            _wait_for_menu(app, page, timeout_ms)
-            page.wait_for_timeout(2000)
-            return map_welmenu_images(_collect_image_urls(app, timeout_ms))
+            app = _load_app_frame(page, url, limit)
+            _wait_for_menu(app, page, limit)
+            page.wait_for_timeout(1000 if os.getenv("CI") else 2000)
+            return map_welmenu_images(_collect_image_urls(app, limit))
         except PlaywrightTimeoutError as exc:
             raise BobssafyError(f"BOB SSAFY 페이지 로딩이 시간 초과되었습니다: {url}") from exc
         finally:
