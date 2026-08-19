@@ -1,0 +1,17 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.playwright-browsers/
+.python-version
+debug_fetch.py
+debug_body.txt
+debug_html.txt
+debug.png
+_probe_*.py
+welplan_page.html
+snippet.txt
+menu_obj.txt
+logs/
