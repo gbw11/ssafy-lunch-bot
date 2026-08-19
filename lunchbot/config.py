@@ -33,6 +33,7 @@ class Settings:
     welstory_jsessionid: str
     welstory_campus: str
     welstory_restaurant_code: str
+    bobssafy_enabled: bool
 
     @property
     def can_notify(self) -> bool:
@@ -67,4 +68,5 @@ def load_settings() -> Settings:
         welstory_jsessionid=_env("WELLSTORY_JSESSIONID"),
         welstory_campus=_env("WELLSTORY_CAMPUS"),
         welstory_restaurant_code=_env("WELLSTORY_RESTAURANT_CODE"),
+        bobssafy_enabled=_env("BOBSSAFY_ENABLED", "true").lower() not in {"0", "false", "no", "off"},
     )

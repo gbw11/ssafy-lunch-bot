@@ -20,6 +20,11 @@ powershell -ExecutionPolicy Bypass -File C:\Users\SSAFY\ssafy-lunch-bot\scripts\
 ## 수동 확인
 
 ```powershell
+pip install -r requirements.txt
+python -m playwright install chromium
+python -m lunchbot --test-bobssafy
 python -m lunchbot --dry-run
 python -m lunchbot
 ```
+
+사진은 Welplan live API → BOB SSAFY → 웰스토리 API 순으로 채웁니다.

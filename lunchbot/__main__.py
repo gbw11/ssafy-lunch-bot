@@ -32,6 +32,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="웰스토리 인증과 당일 사진 URL 조회만 테스트합니다.",
     )
+    parser.add_argument(
+        "--test-bobssafy",
+        action="store_true",
+        help="BOB SSAFY에서 코너별 사진 URL 조회만 테스트합니다.",
+    )
     args = parser.parse_args(argv)
     settings = load_settings()
 
@@ -65,6 +70,20 @@ def main(argv: list[str] | None = None) -> int:
             station = meal.get("courseTxt") or meal.get("course") or "?"
             photo = meal_photo_url(meal)
             tail = photo.split("/")[-1] if photo else "(사진 없음)"
+            print(f"  {station}: {tail}")
+        return 0
+
+    if args.test_bobssafy:
+        from lunchbot.fetch_menu import BobssafyError, fetch_menu_images
+
+        try:
+            photos = fetch_menu_images(settings.bobssafy_url)
+        except BobssafyError as exc:
+            print(f"BOB SSAFY 연결 실패: {exc}", file=sys.stderr)
+            return 1
+        print(f"BOB SSAFY 연결 OK (사진 {len(photos)}개)")
+        for station, url in photos.items():
+            tail = url.split("/")[-1] if url else "(사진 없음)"
             print(f"  {station}: {tail}")
         return 0
 

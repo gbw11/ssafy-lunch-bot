@@ -3,10 +3,11 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
+from typing import Callable
+
 import requests
 
 from lunchbot.parse_menu import DayMenu, StationMenu
-from lunchbot.timeutil import now_in
 
 BASE_URL = "https://welplus.welstory.com"
 MEAL_TYPE_LUNCH = "2"
@@ -187,7 +188,12 @@ def meal_photo_url(meal: dict) -> str:
     return photo
 
 
-def apply_meal_photos(menu: DayMenu, meals: list[dict]) -> DayMenu:
+def apply_meal_photos(
+    menu: DayMenu,
+    meals: list[dict],
+    *,
+    fill_if: Callable[[StationMenu], bool] | None = None,
+) -> DayMenu:
     by_course: dict[str, str] = {}
     by_station: dict[str, str] = {}
     for meal in meals:
@@ -203,6 +209,8 @@ def apply_meal_photos(menu: DayMenu, meals: list[dict]) -> DayMenu:
 
     def fill(item: StationMenu | None) -> None:
         if item is None:
+            return
+        if fill_if is not None and not fill_if(item):
             return
         photo = by_course.get(item.course_type) or by_station.get(item.station)
         if photo:
