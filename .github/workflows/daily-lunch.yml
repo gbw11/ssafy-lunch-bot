@@ -3,7 +3,8 @@ name: Daily lunch menu
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 2 * * 1-5"
+    # 01:40 UTC = 10:40 KST. 정시(0분)는 큐 경합이 심해 20분 여유를 둡니다.
+    - cron: "40 1 * * 1-5"
 
 jobs:
   send-lunch:
