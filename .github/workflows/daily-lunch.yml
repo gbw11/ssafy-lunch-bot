@@ -37,6 +37,8 @@ jobs:
           MATTERMOST_URL: https://meeting.ssafy.com
           WELLSTORY_USERNAME: ${{ secrets.WELLSTORY_USERNAME }}
           WELLSTORY_PASSWORD: ${{ secrets.WELLSTORY_PASSWORD }}
+          # remember-me 쿠키가 있으면 로그인을 건너뜁니다(계정 잠금 방지).
+          WELLSTORY_REMEMBER_ME: ${{ secrets.WELLSTORY_REMEMBER_ME }}
           WELLSTORY_CAMPUS: 전기부산
           WELLSTORY_RESTAURANT_CODE: REST000595
           BOBSSAFY_URL: https://bobssafy.streamlit.app/

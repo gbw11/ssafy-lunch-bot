@@ -63,6 +63,9 @@ def _login(username: str, password: str) -> requests.Session:
             return session
         if last_code in {0, "0"} and payload.get("data"):
             return session
+        if last_code in LOCKED_CODES:
+            # 이미 잠긴 계정에 두 번째 시도를 더하면 잠금이 갱신되기만 합니다.
+            break
 
     detail = f" ({last_message})" if last_message else ""
     hint = LOCKED_HINT if last_code in LOCKED_CODES else LOGIN_HINT

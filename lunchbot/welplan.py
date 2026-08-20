@@ -75,7 +75,9 @@ def is_real_menu_image(url: str) -> bool:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
     except requests.RequestException:
-        return False
+        # 판정 불가일 뿐 사진이 없는 건 아닙니다. CI 러너에서 이미지 CDN 접근이
+        # 실패하는 일이 있어, 여기서 False를 주면 멀쩡한 사진까지 지워집니다.
+        return True
     return not is_placeholder_image_bytes(response.content)
 
 
