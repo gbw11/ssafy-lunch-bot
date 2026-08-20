@@ -35,6 +35,8 @@ jobs:
           MATTERMOST_WEBHOOK_URL: ${{ secrets.MATTERMOST_WEBHOOK_URL }}
           MATTERMOST_CHANNEL_ID: 9ac0b84f5d7b6f81293023d1245cd537
           MATTERMOST_URL: https://meeting.ssafy.com
+          WELLSTORY_USERNAME: ${{ secrets.WELLSTORY_USERNAME }}
+          WELLSTORY_PASSWORD: ${{ secrets.WELLSTORY_PASSWORD }}
           WELLSTORY_CAMPUS: 전기부산
           WELLSTORY_RESTAURANT_CODE: REST000595
           BOBSSAFY_URL: https://bobssafy.streamlit.app/
