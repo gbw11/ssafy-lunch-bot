@@ -26,19 +26,28 @@ def _desc(item: StationMenu) -> str:
     return text
 
 
-def _table(items: list[StationMenu]) -> str:
-    """코너를 가로로 늘어놓은 3줄 표 (코너명 / 사진 / 메뉴)."""
+def _image_table(items: list[StationMenu]) -> str:
+    """코너명 + 사진만 있는 표. 메뉴 글 길이가 이 표의 열 너비에 영향을 주지 않도록 분리."""
     if not items:
         return ""
     headers = " | ".join(f"**{item.station}**" for item in items)
     align = "|".join([":---:"] * len(items))
     images = " | ".join(_image(item) for item in items)
-    descs = " | ".join(_desc(item) for item in items)
-    return f"| {headers} |\n|{align}|\n| {images} |\n| {descs} |"
+    return f"| {headers} |\n|{align}|\n| {images} |"
+
+
+def _desc_list(items: list[StationMenu]) -> str:
+    """코너별 메뉴 글을 표 밖에서 목록으로 표시."""
+    return "\n".join(f"- **{item.station}**: {_desc(item)}" for item in items if _desc(item))
+
+
+def _section(items: list[StationMenu]) -> str:
+    parts = [_image_table(items), _desc_list(items)]
+    return "\n\n".join(part for part in parts if part)
 
 
 def format_message(menu: DayMenu) -> str:
-    """메인 코너 표 하나 + 마이보글·추가배식대 표 하나."""
+    """메인 코너 섹션 하나 + 마이보글·추가배식대 섹션 하나."""
     extras = [item for item in (menu.ramen, menu.extra) if item]
-    parts = [HEADING, _table(menu.mains), _table(extras)]
+    parts = [HEADING, _section(menu.mains), _section(extras)]
     return "\n\n".join(part for part in parts if part)
