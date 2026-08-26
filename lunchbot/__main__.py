@@ -5,11 +5,14 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
+
+import requests
 
 from lunchbot import welplan, welstory
 from lunchbot.config import Settings, load_settings
 from lunchbot.message import format_message
-from lunchbot.models import DayMenu, StationMenu
+from lunchbot.models import DayMenu, StationMenu, now_in
 from lunchbot.notify import send_message
 
 PHOTO_HINT_LOGIN = (
@@ -42,6 +45,32 @@ def _warn_missing_photos(menu: DayMenu, settings: Settings) -> None:
     _log("당일 사진이 없는 코너: " + ", ".join(missing) + " —" + hint)
 
 
+def _wait_for_lunch_photos(menu: DayMenu, settings: Settings, restaurant_code: str) -> None:
+    """실제 점심 사진은 배식 직전에야 올라옵니다. 그때까지 live API를 다시 봅니다."""
+    deadline = time.monotonic() + settings.photo_wait_seconds
+    waited = 0
+    while any(_needs_photo(item) for item in menu.stations):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            if waited:
+                _log(f"{waited // 60}분을 기다렸지만 점심 사진이 다 올라오지 않아 그대로 보냅니다.")
+            return
+        pause = int(min(settings.photo_poll_seconds, remaining))
+        if waited == 0:
+            _log("아직 점심 사진이 올라오지 않아 기다립니다. (최대 "
+                 f"{settings.photo_wait_seconds // 60}분)")
+        time.sleep(pause)
+        waited += pause
+        try:
+            photos = welplan.fetch_live_photos(restaurant_code, now_in(settings.timezone))
+        except requests.RequestException as exc:
+            _log(f"사진 재조회 실패(계속 시도합니다): {exc}")
+            continue
+        menu.fill_photos(photos, _needs_photo)
+    if waited:
+        _log(f"{waited // 60}분 {waited % 60}초 만에 점심 사진이 올라왔습니다.")
+
+
 def _fill_from_bobssafy(menu: DayMenu, settings: Settings) -> None:
     from lunchbot.bobssafy import BobssafyError, fetch_photos  # playwright는 필요할 때만
 
@@ -72,6 +101,7 @@ def build_today_menu(settings: Settings) -> DayMenu:
         slug=settings.welstory_campus or welplan.DEFAULT_SLUG,
         timezone=settings.timezone,
     )
+    _wait_for_lunch_photos(menu, settings, restaurant_code)
     if settings.bobssafy_enabled and any(_needs_photo(item) for item in menu.stations):
         _fill_from_bobssafy(menu, settings)
     if settings.has_welstory and any(_needs_photo(item) for item in menu.stations):

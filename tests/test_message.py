@@ -52,3 +52,17 @@ def test_empty_menu_is_heading_only() -> None:
     menu = DayMenu(date_label="2026-08-19")
     assert not menu.has_content
     assert format_message(menu) == "### :yum: 오늘의 점심 메뉴 :whatistodaylunch:"
+
+
+def test_section_drops_photo_table_when_no_photos() -> None:
+    """점심 사진이 아직 안 올라온 날 빈 칸만 있는 표가 남으면 안 됩니다."""
+    menu = DayMenu(
+        date_label="2026-08-26",
+        mains=[
+            StationMenu(station="브라운그릴", name="불고기", kcal="923kcal", course_type="A1"),
+            StationMenu(station="동방식객", name="파스타", kcal="889kcal", course_type="AA"),
+        ],
+    )
+    text = format_message(menu)
+    assert "|:---:|" not in text
+    assert "- **브라운그릴**: 불고기 (923kcal)" in text

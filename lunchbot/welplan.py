@@ -126,6 +126,17 @@ def _best_photo(urls: list[str], target_date: str) -> str:
     return max(dated or urls, key=lambda url: _photo_stamp(url) or "0")
 
 
+def _meal_time_id(item: dict) -> str:
+    """live API 응답과 카드에서 끼니 구분(1 조식 / 2 중식 / 3 석식)을 읽습니다."""
+    return str(item.get("mealTimeId") or item.get("meal_time_id") or "")
+
+
+def _is_lunch(item: dict) -> bool:
+    """끼니 표기가 없으면(필드 누락) 버리지 않고 살립니다."""
+    meal_time = _meal_time_id(item)
+    return meal_time in {LUNCH_MEAL_TIME_ID, ""}
+
+
 def _menu_key(item: dict) -> str:
     """live API 응답과 카드를 짝지을 키. 양쪽 필드 이름이 달라 둘 다 봅니다."""
     return ":".join(
@@ -155,24 +166,40 @@ def fetch_live_menus(restaurant_id: str, date: datetime) -> list[dict]:
     return menus if isinstance(menus, list) else []
 
 
-def merge_live_images(cards: list[dict], live_menus: list[dict]) -> list[dict]:
-    """live API 사진(당일 실사진)으로 카드의 레시피 사진을 갈아끼웁니다."""
-    target_date = str(cards[0].get("date") or "") if cards else ""
-    by_key = {
-        _menu_key(menu): str(menu["imageUrl"]) for menu in live_menus if menu.get("imageUrl")
-    }
-
+def course_photos(live_menus: list[dict], target_date: str) -> dict[str, str]:
+    """본관 점심 사진만 코너코드별로 모읍니다."""
     course_urls: dict[str, list[str]] = {}
     for menu in live_menus:
         if menu.get("hallNo") not in {MAIN_HALL, None, ""}:
             continue
         if target_date and str(menu.get("date") or "") != target_date:
             continue
+        # 조식/석식 사진은 같은 코너코드를 쓰면서 새벽에 먼저 올라옵니다.
+        # 끼니를 안 거르면 점심 사진 대신 그날 조식 사진이 실립니다.
+        if not _is_lunch(menu):
+            continue
         course = str(menu.get("courseType") or "")
         url = str(menu.get("imageUrl") or "")
         if course and url:
             course_urls.setdefault(course, []).append(url)
-    by_course = {course: _best_photo(urls, target_date) for course, urls in course_urls.items()}
+    return {course: _best_photo(urls, target_date) for course, urls in course_urls.items()}
+
+
+def fetch_live_photos(restaurant_id: str, date: datetime) -> dict[str, str]:
+    """코너코드 → 당일 점심 사진 URL. 사진이 올라오길 기다리며 다시 부를 때 씁니다."""
+    day = f"{date:%Y%m%d}"
+    return course_photos(fetch_live_menus(restaurant_id, date), day)
+
+
+def merge_live_images(cards: list[dict], live_menus: list[dict]) -> list[dict]:
+    """live API 사진(당일 실사진)으로 카드의 레시피 사진을 갈아끼웁니다."""
+    target_date = str(cards[0].get("date") or "") if cards else ""
+    by_key = {
+        _menu_key(menu): str(menu["imageUrl"])
+        for menu in live_menus
+        if menu.get("imageUrl") and _is_lunch(menu)
+    }
+    by_course = course_photos(live_menus, target_date)
 
     merged: list[dict] = []
     for card in cards:

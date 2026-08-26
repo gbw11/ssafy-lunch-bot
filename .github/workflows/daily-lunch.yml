@@ -7,7 +7,8 @@ on:
 jobs:
   send-lunch:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 점심 사진(배식 직전 업로드)을 최대 25분 기다리므로 넉넉히 잡습니다.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -43,5 +44,7 @@ jobs:
           BOBSSAFY_URL: https://bobssafy.streamlit.app/
           BOBSSAFY_ENABLED: "true"
           BOBSSAFY_TIMEOUT_MS: "45000"
+          # 실제 점심 사진이 올라올 때까지 기다릴 최대 시간.
+          PHOTO_WAIT_MINUTES: "25"
           TIMEZONE: Asia/Seoul
         run: python -m lunchbot

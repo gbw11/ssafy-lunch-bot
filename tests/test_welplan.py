@@ -1,6 +1,7 @@
 from lunchbot.message import format_message
 from lunchbot.welplan import (
     cards_to_day_menu,
+    course_photos,
     is_placeholder_image_bytes,
     merge_live_images,
     parse_lunch_cards,
@@ -69,7 +70,8 @@ def test_merge_live_images_replaces_recipe_url() -> None:
     assert by_course["AA"]["image_url"] == "https://img-welmenu.welstory.com/b.jpg"
 
 
-def test_merge_live_images_prefers_today_photo_across_meal_times() -> None:
+def test_merge_live_images_ignores_breakfast_photo_of_same_course() -> None:
+    """조식 사진이 오늘 새벽에 먼저 올라와도 점심 사진을 밀어내면 안 됩니다."""
     cards = parse_lunch_cards(HTML)
     live = [
         {
@@ -95,9 +97,34 @@ def test_merge_live_images_prefers_today_photo_across_meal_times() -> None:
     ]
     merged = merge_live_images(cards, live)
     by_course = {card["course_type"]: card for card in merged}
-    assert by_course["BB"]["image_url"] == "https://img-welmenu.welstory.com/s20260819041017.jpg"
+    assert by_course["BB"]["image_url"] == "https://img-welmenu.welstory.com/s20260812152319.jpg"
 
 
 def test_placeholder_image_bytes_match_known_hash() -> None:
     assert is_placeholder_image_bytes(b"")
     assert not is_placeholder_image_bytes(b"real-photo")
+
+
+def test_course_photos_keeps_lunch_only() -> None:
+    """조식(1)·석식(3)·야식(4)이 같은 코너코드를 써도 점심만 남아야 합니다."""
+    live = [
+        {"date": "20260826", "mealTimeId": "1", "hallNo": "E32M", "courseType": "A1",
+         "imageUrl": "https://img-welmenu.welstory.com/s20260826041422.jpg"},
+        {"date": "20260826", "mealTimeId": "2", "hallNo": "E32M", "courseType": "A1",
+         "imageUrl": "https://img-welmenu.welstory.com/s20260821123252.jpg"},
+        {"date": "20260826", "mealTimeId": "4", "hallNo": "E32M", "courseType": "AA",
+         "imageUrl": "https://img-welmenu.welstory.com/s20260821151723.jpg"},
+    ]
+    photos = course_photos(live, "20260826")
+    assert photos == {"A1": "https://img-welmenu.welstory.com/s20260821123252.jpg"}
+
+
+def test_course_photos_keeps_rows_without_meal_time() -> None:
+    """끼니 필드가 없는 응답까지 버리면 사진이 통째로 사라집니다."""
+    live = [
+        {"date": "20260826", "hallNo": "E32M", "courseType": "BB",
+         "imageUrl": "https://img-welmenu.welstory.com/s20260826110000.jpg"},
+    ]
+    assert course_photos(live, "20260826") == {
+        "BB": "https://img-welmenu.welstory.com/s20260826110000.jpg"
+    }

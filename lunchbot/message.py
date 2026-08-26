@@ -28,8 +28,8 @@ def _desc(item: StationMenu) -> str:
 
 def _image_table(items: list[StationMenu]) -> str:
     """코너명 + 사진만 있는 표. 메뉴 글 길이가 이 표의 열 너비에 영향을 주지 않도록 분리."""
-    if not items:
-        return ""
+    if not items or not any(item.image_url for item in items):
+        return ""  # 사진이 하나도 없으면 빈 칸만 남은 표가 되므로 아예 뺍니다.
     headers = " | ".join(f"**{item.station}**" for item in items)
     align = "|".join([":---:"] * len(items))
     images = " | ".join(_image(item) for item in items)

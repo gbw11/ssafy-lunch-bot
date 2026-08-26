@@ -13,6 +13,18 @@ load_dotenv()
 
 FALSY = {"0", "false", "no", "off"}
 
+# 실제 점심 사진은 배식 직전(대개 10:30 전후)에야 웰스토리에 올라옵니다.
+# 그전에는 플레이스홀더뿐이라 잠시 기다렸다 다시 조회합니다.
+DEFAULT_PHOTO_WAIT_MINUTES = "25"
+DEFAULT_PHOTO_POLL_SECONDS = "60"
+
+
+def _int_env(name: str, default: str) -> int:
+    try:
+        return max(0, int(_env(name, default)))
+    except ValueError:
+        return int(default)
+
 
 def _env(name: str, default: str = "") -> str:
     value = (os.getenv(name) or "").strip()
@@ -36,6 +48,8 @@ class Settings:
     welstory_restaurant_code: str
     bobssafy_url: str
     bobssafy_enabled: bool
+    photo_wait_seconds: int
+    photo_poll_seconds: int
 
     @property
     def has_welstory_login(self) -> bool:
@@ -65,4 +79,6 @@ def load_settings() -> Settings:
         welstory_restaurant_code=_env("WELLSTORY_RESTAURANT_CODE"),
         bobssafy_url=_env("BOBSSAFY_URL", "https://bobssafy.streamlit.app/").rstrip("/") + "/",
         bobssafy_enabled=_env("BOBSSAFY_ENABLED", "true").lower() not in FALSY,
+        photo_wait_seconds=_int_env("PHOTO_WAIT_MINUTES", DEFAULT_PHOTO_WAIT_MINUTES) * 60,
+        photo_poll_seconds=_int_env("PHOTO_POLL_SECONDS", DEFAULT_PHOTO_POLL_SECONDS) or 60,
     )
