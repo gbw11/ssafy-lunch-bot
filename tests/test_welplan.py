@@ -5,7 +5,6 @@ import requests
 import lunchbot.welplan as welplan_module
 from lunchbot.message import format_message
 from lunchbot.welplan import (
-    _ramen_card,
     cards_to_day_menu,
     course_photos,
     fetch_course_detail,
@@ -156,12 +155,6 @@ def test_course_detail_500_does_not_raise(monkeypatch) -> None:
     assert fetch_course_detail("REST000595", datetime(2026, 8, 27), "E32M", "A1") == []
 
 
-def test_ramen_card_none_when_detail_500(monkeypatch) -> None:
-    """마이보글(DD)이 없는 날 상세 API가 500을 주면 라면 카드만 빠져야 합니다."""
-    monkeypatch.setattr(welplan_module.requests, "get", lambda *a, **k: _Response500())
-    assert _ramen_card("REST000595", datetime(2026, 8, 27)) is None
-
-
 def test_message_survives_missing_ramen_corner() -> None:
     """DD 카드가 없어도 나머지 코너로 정상 메시지가 나가야 합니다."""
     cards = [card for card in parse_lunch_cards(HTML) if card["course_type"] != "DD"]
@@ -171,3 +164,72 @@ def test_message_survives_missing_ramen_corner() -> None:
     assert "마이보글" not in text
     assert "추가배식대" in text
     assert "브라운그릴" in text
+
+
+class _FakePage:
+    """Welplan 메뉴 페이지 응답."""
+
+    ok = True
+    status_code = 200
+    encoding = "utf-8"
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+    def raise_for_status(self) -> None:
+        pass
+
+
+class _FakeJson:
+    ok = True
+    status_code = 200
+
+    def __init__(self, payload) -> None:
+        self._payload = payload
+
+    def raise_for_status(self) -> None:
+        pass
+
+    def json(self):
+        return self._payload
+
+
+def test_menu_survives_when_detail_api_is_down(monkeypatch) -> None:
+    """2026-08-27 장애 재현: DD 카드가 없고 상세 API가 전부 500이어도 급식표는 나가야 합니다."""
+    html_no_dd = HTML.replace('courseType:"DD"', 'courseType:"ZZ"')
+
+    def fake_get(url, **kwargs):
+        if "/restaurants/" in url:
+            return _FakePage(html_no_dd)
+        return _Response500()  # 상세·live API 전부 500
+
+    monkeypatch.setattr(welplan_module.requests, "get", fake_get)
+    menu = welplan_module.fetch_today_menu()
+    assert [item.station for item in menu.mains] == ["브라운그릴", "동방식객", "모던키친", "별미공방"]
+    assert menu.ramen is None
+    assert menu.extra is not None
+
+
+def test_ramen_card_built_once_from_detail(monkeypatch) -> None:
+    """DD 카드가 없는 날 상세 응답 한 번으로 라면 카드와 반찬 목록을 다 채워야 합니다."""
+    html_no_dd = HTML.replace('courseType:"DD"', 'courseType:"ZZ"')
+    dd_calls = []
+
+    def fake_get(url, params=None, **kwargs):
+        if "/restaurants/" in url:
+            return _FakePage(html_no_dd)
+        if url.endswith("/menus/detail") and params.get("courseType") == "DD":
+            dd_calls.append(url)
+            return _FakeJson([
+                {"name": "[라면 14종 중 택1]", "nutrition": {"calories": 0}},
+                {"name": "신라면", "nutrition": {"calories": 500}},
+            ])
+        return _Response500()
+
+    monkeypatch.setattr(welplan_module.requests, "get", fake_get)
+    menu = welplan_module.fetch_today_menu()
+    assert menu.ramen is not None
+    assert menu.ramen.name == "[라면 14종 중 택1]"
+    assert menu.ramen.items == ["신라면"]
+    assert menu.ramen.kcal == "500kcal"
+    assert len(dd_calls) == 1  # 같은 상세를 두 번 부르지 않습니다.

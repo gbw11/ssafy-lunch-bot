@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import html
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import lru_cache
 from urllib.parse import quote
@@ -282,11 +283,8 @@ def fetch_course_detail(
     return rows
 
 
-def _ramen_card(restaurant_id: str, date: datetime) -> dict | None:
-    """마이보글(DD)은 카드로 안 나오는 날이 있어 상세 API로 직접 만듭니다."""
-    rows = fetch_course_detail(restaurant_id, date, MAIN_HALL, "DD")
-    if not rows:
-        return None
+def _ramen_card(restaurant_id: str, date: datetime, rows: list[dict]) -> dict:
+    """마이보글(DD)은 카드로 안 나오는 날이 있어 상세 응답으로 직접 만듭니다."""
     day = f"{date:%Y%m%d}"
     return {
         "menu_id": f"{day}-{restaurant_id}-{MAIN_HALL}-DD",
@@ -351,19 +349,27 @@ def fetch_today_menu(
     response.encoding = "utf-8"
 
     cards = parse_lunch_cards(response.text, restaurant_id)
+    details: dict[str, list[dict]] = {}
     if not any(card["course_type"] == "DD" for card in cards):
-        ramen = _ramen_card(restaurant_id, today)
-        if ramen:
-            cards.append(ramen)
+        # 여기서 받은 반찬 목록을 details에도 그대로 써서 같은 상세를 두 번 부르지 않습니다.
+        rows = fetch_course_detail(restaurant_id, today, MAIN_HALL, "DD")
+        if rows:
+            cards.append(_ramen_card(restaurant_id, today, rows))
+            details["DD"] = rows
 
     live_menus = fetch_live_menus(restaurant_id, today)
     if live_menus:
         cards = merge_live_images(cards, live_menus)
 
-    details = {
-        card["course_type"]: fetch_course_detail(
-            restaurant_id, today, card["hall_no"], card["course_type"]
-        )
-        for card in cards
-    }
+    # 코너 상세는 서로 독립이라 병렬로 받습니다(최대 6코너 직렬 왕복 → 1 왕복).
+    remaining = [card for card in cards if card["course_type"] not in details]
+    if remaining:
+        with ThreadPoolExecutor(max_workers=len(remaining)) as pool:
+            fetched = pool.map(
+                lambda card: fetch_course_detail(
+                    restaurant_id, today, card["hall_no"], card["course_type"]
+                ),
+                remaining,
+            )
+        details.update(zip((card["course_type"] for card in remaining), fetched))
     return cards_to_day_menu(cards, details, f"{today:%Y-%m-%d}")

@@ -1,6 +1,6 @@
 # SSAFY 급식봇
 
-전기부산 점심 메뉴를 Mattermost **간식먹고노라라** 채널에 **평일 11:00** 자동으로 보냅니다.
+전기부산 점심 메뉴를 Mattermost **간식먹고노라라** 채널에 자동으로 보냅니다.
 
 ## 구조
 
@@ -20,21 +20,15 @@ lunchbot/
 플레이스홀더가 걸린 코너는 사진 없이 보냅니다. 소스마다 원본 크기가 달라서 표에 넣을 때는
 `message.py`의 `IMAGE_WIDTH`/`IMAGE_HEIGHT`(기본 240×180)로 전부 같은 크기로 맞춥니다.
 
-## 자동 전송 (Windows)
+## 자동 전송 (GitHub Actions)
 
-PC가 켜져 있고 로그인한 상태면, 작업 스케줄러가 평일 11시에 보냅니다.
+GitHub 자체 cron은 지연이 심해서 쓰지 않습니다. 외부 cron(cron-job.org)이 **평일
+10:39 KST**에 `daily-lunch.yml`을 `workflow_dispatch`로 트리거하고, 봇이 점심 사진이
+올라올 때까지(최대 `PHOTO_WAIT_MINUTES`분) 기다렸다가 대개 **11:00 전후**에 전송합니다.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File C:\Users\SSAFY\ssafy-lunch-bot\scripts\install-task.ps1
-```
-
-- 작업 이름: `SSAFYLunchBot`
-- 로그: `C:\Users\SSAFY\ssafy-lunch-bot\logs\lunch.log`
-
-## GitHub Actions
-
-저장소를 GitHub에 올리고 Secrets에 `MATTERMOST_WEBHOOK_URL`만 넣으면, PC를 켜두지 않아도
-평일 11:00(KST)에 전송됩니다.
+저장소 Secrets에 `MATTERMOST_WEBHOOK_URL`만 넣으면 동작하고, 사진 폴백까지 쓰려면
+`WELLSTORY_USERNAME`/`WELLSTORY_PASSWORD`도 넣어 주세요. 나머지 설정은 워크플로
+파일의 `env` 블록에 있습니다.
 
 ## 수동 확인
 
