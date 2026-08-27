@@ -1,7 +1,14 @@
+from datetime import datetime
+
+import requests
+
+import lunchbot.welplan as welplan_module
 from lunchbot.message import format_message
 from lunchbot.welplan import (
+    _ramen_card,
     cards_to_day_menu,
     course_photos,
+    fetch_course_detail,
     is_placeholder_image_bytes,
     merge_live_images,
     parse_lunch_cards,
@@ -128,3 +135,39 @@ def test_course_photos_keeps_rows_without_meal_time() -> None:
     assert course_photos(live, "20260826") == {
         "BB": "https://img-welmenu.welstory.com/s20260826110000.jpg"
     }
+
+
+class _Response500:
+    """상위 프록시가 nutrient 캐시 미스로 500을 주는 상황."""
+
+    ok = False
+    status_code = 500
+
+    def raise_for_status(self):
+        raise requests.HTTPError("500 Server Error")
+
+    def json(self):
+        return {"error": "Menu nutrient detail cache miss"}
+
+
+def test_course_detail_500_does_not_raise(monkeypatch) -> None:
+    """상세는 부가 정보일 뿐이라, 500이 급식표 전체를 막아선 안 됩니다."""
+    monkeypatch.setattr(welplan_module.requests, "get", lambda *a, **k: _Response500())
+    assert fetch_course_detail("REST000595", datetime(2026, 8, 27), "E32M", "A1") == []
+
+
+def test_ramen_card_none_when_detail_500(monkeypatch) -> None:
+    """마이보글(DD)이 없는 날 상세 API가 500을 주면 라면 카드만 빠져야 합니다."""
+    monkeypatch.setattr(welplan_module.requests, "get", lambda *a, **k: _Response500())
+    assert _ramen_card("REST000595", datetime(2026, 8, 27)) is None
+
+
+def test_message_survives_missing_ramen_corner() -> None:
+    """DD 카드가 없어도 나머지 코너로 정상 메시지가 나가야 합니다."""
+    cards = [card for card in parse_lunch_cards(HTML) if card["course_type"] != "DD"]
+    menu = cards_to_day_menu(cards, {}, "2026-08-27")
+    text = format_message(menu)
+    assert menu.ramen is None
+    assert "마이보글" not in text
+    assert "추가배식대" in text
+    assert "브라운그릴" in text

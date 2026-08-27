@@ -265,6 +265,10 @@ def fetch_course_detail(
             "courseType": course_type,
             "nutrient": "1",
         },
+        # 코너 상세(반찬 목록)는 있으면 좋은 정보일 뿐입니다. 상위 프록시가 죽으면
+        # (예: nutrient 캐시 미스로 500) 여기서 예외를 올려 급식표 전체가 안 나갑니다.
+        # 상세가 없으면 카드에 있는 대표 메뉴명/열량만으로 보냅니다.
+        required=False,
     )
     if not isinstance(payload, list):
         return []
