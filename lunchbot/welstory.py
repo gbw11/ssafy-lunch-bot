@@ -22,8 +22,9 @@ HEADERS = {
 }
 
 LOGIN_HINT = (
-    "WELLSTORY_USERNAME/PASSWORD에 웰스토리 앱 계정을 넣어 주세요. "
-    "웹사이트 로그인 화면은 없어도 API 로그인은 가능합니다."
+    "ID/PW 로그인은 Incapsula WAF가 JSON 대신 자바스크립트 챌린지를 돌려줘서 "
+    "아이디·비번이 맞아도 실패합니다. 브라우저로 로그인해 받은 remember-me 쿠키를 "
+    "WELLSTORY_REMEMBER_ME 에 넣어 주세요(README 참고)."
 )
 LOCKED_HINT = (
     "로그인 시도가 많아 계정이 잠겼습니다. 30분 후 다시 시도해 주세요. "
@@ -72,7 +73,40 @@ def _login(username: str, password: str) -> requests.Session:
     raise WelstoryError(f"웰스토리 로그인에 실패했습니다.{detail} {hint}")
 
 
+def auth_mode(settings: Settings) -> str:
+    """지금 설정으로 어떤 인증 경로를 쓰는지. 로그에 찍어 헷갈리지 않게 합니다."""
+    if settings.welstory_access_token:
+        return "accessToken(Bearer)"
+    if settings.welstory_remember_me:
+        return "remember-me 쿠키"
+    if settings.welstory_jsessionid:
+        return "JSESSIONID 쿠키"
+    if settings.has_welstory_login:
+        return "ID/PW 로그인(Incapsula WAF에 막힐 수 있음)"
+    return "없음"
+
+
+def _token_session(settings: Settings) -> requests.Session:
+    """앱/웹이 실제로 쓰는 인증 방식.
+
+    welplus 는 로그인 성공 시 세션 쿠키를 주지 않고 응답 본문의 accessToken 을
+    `Authorization: Bearer` 로 실어 보냅니다(app.js 의 요청 인터셉터가
+    `Authorization` / `X-Device-Id` / `X-Autologin` 을 붙입니다).
+    """
+    session = _new_session()
+    token = settings.welstory_access_token
+    # "Bearer xxx" 를 그대로 붙여넣어도 되게 합니다.
+    token = token[len("Bearer ") :].strip() if token.lower().startswith("bearer ") else token
+    session.headers["Authorization"] = f"Bearer {token}"
+    session.headers["X-Autologin"] = "Y"
+    if settings.welstory_device_id:
+        session.headers["X-Device-Id"] = settings.welstory_device_id
+    return session
+
+
 def _authenticated_session(settings: Settings) -> requests.Session:
+    if settings.welstory_access_token:
+        return _token_session(settings)
     if settings.welstory_remember_me or settings.welstory_jsessionid:
         session = _new_session()
         for name, value in (
@@ -85,7 +119,7 @@ def _authenticated_session(settings: Settings) -> requests.Session:
     if settings.has_welstory_login:
         return _login(settings.welstory_username, settings.welstory_password)
     raise WelstoryError(
-        "웰스토리 인증 정보가 없습니다. WELLSTORY_USERNAME/PASSWORD 또는 "
+        "웰스토리 인증 정보가 없습니다. WELLSTORY_ACCESS_TOKEN(권장) 또는 "
         "WELLSTORY_REMEMBER_ME 를 .env 에 넣어 주세요."
     )
 
@@ -108,7 +142,7 @@ def fetch_lunch_meals(
     if response.headers.get("wp-error") == "login" or not response.content:
         raise WelstoryError(
             "웰스토리 세션이 만료되었거나 유효하지 않습니다. "
-            "welplus.welstory.com 에 다시 로그인한 뒤 remember-me 쿠키를 갱신해 주세요."
+            "welplus.welstory.com 에 다시 로그인해 accessToken 을 갱신해 주세요."
         )
     try:
         payload = response.json()

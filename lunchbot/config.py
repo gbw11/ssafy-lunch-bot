@@ -42,6 +42,8 @@ class Settings:
     mattermost_token: str
     welstory_username: str
     welstory_password: str
+    welstory_access_token: str
+    welstory_device_id: str
     welstory_remember_me: str
     welstory_jsessionid: str
     welstory_campus: str
@@ -56,11 +58,19 @@ class Settings:
         return bool(self.welstory_username and self.welstory_password)
 
     @property
+    def has_welstory_session(self) -> bool:
+        """브라우저에서 받아온 토큰·쿠키가 있으면 WAF에 막히는 로그인을 건너뜁니다."""
+        return bool(
+            self.welstory_access_token
+            or self.welstory_remember_me
+            or self.welstory_jsessionid
+        )
+
+    @property
     def has_welstory(self) -> bool:
         return bool(
             self.has_welstory_login
-            or self.welstory_remember_me
-            or self.welstory_jsessionid
+            or self.has_welstory_session
         )
 
 
@@ -73,6 +83,8 @@ def load_settings() -> Settings:
         mattermost_token=_env("MATTERMOST_TOKEN"),
         welstory_username=_env("WELLSTORY_USERNAME") or _env("WELLSTORY_ID"),
         welstory_password=_env("WELLSTORY_PASSWORD"),
+        welstory_access_token=_env("WELLSTORY_ACCESS_TOKEN"),
+        welstory_device_id=_env("WELLSTORY_DEVICE_ID"),
         welstory_remember_me=_env("WELLSTORY_REMEMBER_ME"),
         welstory_jsessionid=_env("WELLSTORY_JSESSIONID"),
         welstory_campus=_env("WELLSTORY_CAMPUS"),

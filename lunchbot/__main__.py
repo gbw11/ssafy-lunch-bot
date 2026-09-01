@@ -6,6 +6,7 @@ import argparse
 import json
 import sys
 import time
+from collections.abc import Callable
 
 import requests
 
@@ -14,6 +15,9 @@ from lunchbot.config import Settings, load_settings
 from lunchbot.message import format_message
 from lunchbot.models import DayMenu, StationMenu, now_in
 from lunchbot.notify import send_message
+
+# (로그에 쓸 이름, 사진 조회, 그 소스가 내는 예외)
+PhotoSource = tuple[str, Callable[[], dict[str, str]], type[Exception]]
 
 PHOTO_HINT = (
     " 사진 소스(Welplan live API / welstory-meal.cloud)에 아직 실사진이 없거나 "
@@ -41,7 +45,12 @@ def _warn_missing_photos(menu: DayMenu) -> None:
     _log("당일 사진이 없는 코너: " + ", ".join(missing) + " —" + PHOTO_HINT)
 
 
-def _wait_for_lunch_photos(menu: DayMenu, settings: Settings, restaurant_code: str) -> None:
+def _wait_for_lunch_photos(
+    menu: DayMenu,
+    settings: Settings,
+    restaurant_code: str,
+    sources: list[PhotoSource],
+) -> None:
     """실제 점심 사진은 배식 직전에야 올라옵니다. 그때까지 live API를 다시 봅니다."""
     deadline = time.monotonic() + settings.photo_wait_seconds
     waited = 0
@@ -57,40 +66,64 @@ def _wait_for_lunch_photos(menu: DayMenu, settings: Settings, restaurant_code: s
                  f"{settings.photo_wait_seconds // 60}분)")
         time.sleep(pause)
         waited += pause
+        # welplan live API 는 죽는 날이 잦고(타임아웃 25초) 그동안 루프가 멈춥니다.
+        # 빠르고 안정적인 소스를 먼저 보고, 남은 코너만 live API 로 재조회합니다.
+        _fill_from_sources(menu, sources, quiet=True)
+        if not any(_needs_photo(item) for item in menu.stations):
+            break
         try:
             photos = welplan.fetch_live_photos(restaurant_code, now_in(settings.timezone))
         except requests.RequestException as exc:
             _log(f"사진 재조회 실패(계속 시도합니다): {exc}")
         else:
             menu.fill_photos(photos, _needs_photo)
-        # welplan live API가 죽은 날에도 기다린 만큼 이득을 보려면 폴백도 같이 봅니다.
-        if settings.mealcloud_enabled and any(_needs_photo(item) for item in menu.stations):
-            _fill_from_mealcloud(menu, settings, quiet=True)
     if waited:
         _log(f"{waited // 60}분 {waited % 60}초 만에 점심 사진이 올라왔습니다.")
 
 
-def _fill_from_mealcloud(menu: DayMenu, settings: Settings, *, quiet: bool = False) -> None:
-    try:
-        photos = mealcloud.fetch_photos(settings.mealcloud_url, settings.timezone)
-    except mealcloud.MealCloudError as exc:
-        if not quiet:  # 대기 루프에서 매분 부를 때는 조용히 넘어갑니다.
-            _log(f"welstory-meal.cloud 사진을 가져오지 못했습니다: {exc}")
-        return
-    menu.fill_photos(photos, _needs_photo)
+def _photo_sources(settings: Settings, restaurant_code: str) -> list[PhotoSource]:
+    """사진 소스를 시도 순서대로.
+
+    브라우저에서 받은 accessToken·쿠키가 있으면 원본(웰스토리 API)을 폴백보다 먼저 봅니다.
+    그게 없이 ID/PW만 있으면 Incapsula WAF에 막혀 거의 실패하므로 맨 뒤로 밀어
+    폴백이 먼저 사진을 채우게 둡니다.
+    """
+    welstory_source: PhotoSource = (
+        f"웰스토리({welstory.auth_mode(settings)})",
+        lambda: welstory.fetch_photos(settings, restaurant_code),
+        welstory.WelstoryError,
+    )
+    sources: list[PhotoSource] = []
+    if settings.has_welstory_session:
+        sources.append(welstory_source)
+    if settings.mealcloud_enabled:
+        sources.append(
+            (
+                "welstory-meal.cloud",
+                lambda: mealcloud.fetch_photos(settings.mealcloud_url, settings.timezone),
+                mealcloud.MealCloudError,
+            )
+        )
+    if settings.has_welstory_login and not settings.has_welstory_session:
+        sources.append(welstory_source)
+    return sources
 
 
-def _fill_from_welstory(menu: DayMenu, settings: Settings, restaurant_code: str) -> None:
-    try:
-        photos = welstory.fetch_photos(settings, restaurant_code)
-    except welstory.WelstoryError as exc:
-        _log(f"웰스토리 당일 사진을 가져오지 못했습니다: {exc}")
-        return
-    menu.fill_photos(photos, _needs_photo)
+def _fill_from_sources(menu: DayMenu, sources: list[PhotoSource], *, quiet: bool = False) -> None:
+    for label, fetch, error in sources:
+        if not any(_needs_photo(item) for item in menu.stations):
+            return
+        try:
+            photos = fetch()
+        except error as exc:  # 소스 하나가 죽어도 다음 소스로 넘어갑니다.
+            if not quiet:  # 대기 루프에서 매분 부를 때는 조용히 넘어갑니다.
+                _log(f"{label} 사진을 가져오지 못했습니다: {exc}")
+            continue
+        menu.fill_photos(photos, _needs_photo)
 
 
 def build_today_menu(settings: Settings) -> DayMenu:
-    """메뉴는 Welplan에서, 빠진 사진은 welstory-meal.cloud → 웰스토리 순으로 채웁니다."""
+    """메뉴는 Welplan에서, 빠진 사진은 `_photo_sources` 순서대로 채웁니다."""
     restaurant_code = welplan.restaurant_code(
         settings.welstory_campus, settings.welstory_restaurant_code
     )
@@ -99,11 +132,9 @@ def build_today_menu(settings: Settings) -> DayMenu:
         slug=settings.welstory_campus or welplan.DEFAULT_SLUG,
         timezone=settings.timezone,
     )
-    _wait_for_lunch_photos(menu, settings, restaurant_code)
-    if settings.mealcloud_enabled and any(_needs_photo(item) for item in menu.stations):
-        _fill_from_mealcloud(menu, settings)
-    if settings.has_welstory and any(_needs_photo(item) for item in menu.stations):
-        _fill_from_welstory(menu, settings, restaurant_code)
+    sources = _photo_sources(settings, restaurant_code)
+    _wait_for_lunch_photos(menu, settings, restaurant_code, sources)
+    _fill_from_sources(menu, sources)
     _warn_missing_photos(menu)
     return menu
 
@@ -148,6 +179,7 @@ def main(argv: list[str] | None = None) -> int:
         code = welplan.restaurant_code(
             settings.welstory_campus, settings.welstory_restaurant_code
         )
+        _log(f"웰스토리 인증 경로: {welstory.auth_mode(settings)}")
         try:
             photos = welstory.fetch_photos(settings, code)
         except welstory.WelstoryError as exc:
