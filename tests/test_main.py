@@ -15,7 +15,7 @@ def _settings(**overrides) -> Settings:
         timezone="Asia/Seoul", webhook_url="", channel_id="", mattermost_url="",
         mattermost_token="", welstory_username="", welstory_password="",
         welstory_remember_me="", welstory_jsessionid="", welstory_campus="",
-        welstory_restaurant_code="", bobssafy_url="", bobssafy_enabled=False,
+        welstory_restaurant_code="", mealcloud_url="", mealcloud_enabled=False,
         photo_wait_seconds=300, photo_poll_seconds=60,
     )
     return Settings(**{**base, **overrides})

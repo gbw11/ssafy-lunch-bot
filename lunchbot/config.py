@@ -46,8 +46,8 @@ class Settings:
     welstory_jsessionid: str
     welstory_campus: str
     welstory_restaurant_code: str
-    bobssafy_url: str
-    bobssafy_enabled: bool
+    mealcloud_url: str
+    mealcloud_enabled: bool
     photo_wait_seconds: int
     photo_poll_seconds: int
 
@@ -77,8 +77,8 @@ def load_settings() -> Settings:
         welstory_jsessionid=_env("WELLSTORY_JSESSIONID"),
         welstory_campus=_env("WELLSTORY_CAMPUS"),
         welstory_restaurant_code=_env("WELLSTORY_RESTAURANT_CODE"),
-        bobssafy_url=_env("BOBSSAFY_URL", "https://bobssafy.streamlit.app/").rstrip("/") + "/",
-        bobssafy_enabled=_env("BOBSSAFY_ENABLED", "true").lower() not in FALSY,
+        mealcloud_url=_env("MEALCLOUD_URL", "https://welstory-meal.cloud").rstrip("/"),
+        mealcloud_enabled=_env("MEALCLOUD_ENABLED", "true").lower() not in FALSY,
         photo_wait_seconds=_int_env("PHOTO_WAIT_MINUTES", DEFAULT_PHOTO_WAIT_MINUTES) * 60,
         photo_poll_seconds=_int_env("PHOTO_POLL_SECONDS", DEFAULT_PHOTO_POLL_SECONDS) or 60,
     )

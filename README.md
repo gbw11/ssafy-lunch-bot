@@ -11,13 +11,15 @@ lunchbot/
   models.py     StationMenu / DayMenu, 시간 헬퍼
   welplan.py    메뉴 원본 + 당일 사진 1차 소스
   welstory.py   사진 폴백 1 (웰스토리플러스 API)
-  bobssafy.py   사진 폴백 2 (Streamlit 페이지, Playwright)
+  mealcloud.py  사진 폴백 2 (welstory-meal.cloud JSON API)
   message.py    Mattermost 마크다운 (사진 크기 통일)
   notify.py     Mattermost 전송 (웹훅 / API 토큰)
 ```
 
-사진은 **Welplan live API → BOB SSAFY → 웰스토리 API** 순으로 채우고, 요리 사진 대신
-플레이스홀더가 걸린 코너는 사진 없이 보냅니다. 소스마다 원본 크기가 달라서 표에 넣을 때는
+사진은 **Welplan live API → welstory-meal.cloud → 웰스토리 API** 순으로 채우고, 요리 사진 대신
+플레이스홀더가 걸린 코너는 사진 없이 보냅니다. welstory-meal.cloud 는 코너명(`courseName`)이
+Welplan 과 어긋나는 날이 있고 코너 순서도 날마다 달라서, 코너명이나 순서가 아니라 **메뉴명**으로
+짝지웁니다(`models.menu_key`). 소스마다 원본 크기가 달라서 표에 넣을 때는
 `message.py`의 `IMAGE_WIDTH`/`IMAGE_HEIGHT`(기본 240×180)로 전부 같은 크기로 맞춥니다.
 
 ## 자동 전송 (GitHub Actions)
@@ -34,11 +36,10 @@ GitHub 자체 cron은 지연이 심해서 쓰지 않습니다. 외부 cron(cron-
 
 ```powershell
 pip install -r requirements.txt
-python -m playwright install chromium
 
 python -m lunchbot --dry-run          # 보낼 메시지만 출력
 python -m lunchbot --test-welstory    # 웰스토리 사진 URL만 확인
-python -m lunchbot --test-bobssafy    # BOB SSAFY 사진 URL만 확인
+python -m lunchbot --test-mealcloud   # welstory-meal.cloud 사진 URL만 확인
 python -m lunchbot --list-restaurants # Welplan 식당 코드 검색
 python -m lunchbot                    # 실제 전송
 python -m pytest tests -q
