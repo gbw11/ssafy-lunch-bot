@@ -24,6 +24,8 @@ jobs:
 
       - name: Send today's menu
         env:
+          # 방마다 웹훅이 따로입니다. 방을 늘리려면 이 Secret에 URL을 콤마로 이어 붙이세요.
+          MATTERMOST_WEBHOOK_URLS: ${{ secrets.MATTERMOST_WEBHOOK_URLS }}
           MATTERMOST_WEBHOOK_URL: ${{ secrets.MATTERMOST_WEBHOOK_URL }}
           MATTERMOST_CHANNEL_ID: 9ac0b84f5d7b6f81293023d1245cd537
           MATTERMOST_URL: https://meeting.ssafy.com

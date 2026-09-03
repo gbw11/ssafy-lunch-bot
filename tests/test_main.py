@@ -12,7 +12,7 @@ REAL = "https://img-welmenu.welstory.com/s20260826103012.jpg"
 
 def _settings(**overrides) -> Settings:
     base = dict(
-        timezone="Asia/Seoul", webhook_url="", channel_id="", mattermost_url="",
+        timezone="Asia/Seoul", webhook_urls=(), channel_id="", mattermost_url="",
         mattermost_token="", welstory_username="", welstory_password="",
         welstory_access_token="", welstory_device_id="",
         welstory_remember_me="", welstory_jsessionid="", welstory_campus="",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 
 from dotenv import load_dotenv
@@ -26,6 +27,20 @@ def _int_env(name: str, default: str) -> int:
         return int(default)
 
 
+def _env_urls(*names: str) -> tuple[str, ...]:
+    """방이 여러 개면 웹훅 URL을 콤마(또는 줄바꿈)로 이어 붙여 둡니다.
+
+    이름을 여러 개 받아 앞에서부터 모으고, 같은 URL은 한 번만 남깁니다.
+    """
+    urls: list[str] = []
+    for name in names:
+        for chunk in re.split(r"[,\s]+", _env(name)):
+            url = chunk.strip().strip("\"'")
+            if url and url not in urls:
+                urls.append(url)
+    return tuple(urls)
+
+
 def _env(name: str, default: str = "") -> str:
     value = (os.getenv(name) or "").strip()
     if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
@@ -36,7 +51,7 @@ def _env(name: str, default: str = "") -> str:
 @dataclass(frozen=True)
 class Settings:
     timezone: str
-    webhook_url: str
+    webhook_urls: tuple[str, ...]
     channel_id: str
     mattermost_url: str
     mattermost_token: str
@@ -77,7 +92,7 @@ class Settings:
 def load_settings() -> Settings:
     return Settings(
         timezone=_env("TIMEZONE", DEFAULT_TIMEZONE),
-        webhook_url=_env("MATTERMOST_WEBHOOK_URL"),
+        webhook_urls=_env_urls("MATTERMOST_WEBHOOK_URLS", "MATTERMOST_WEBHOOK_URL"),
         channel_id=_env("MATTERMOST_CHANNEL_ID", "9ac0b84f5d7b6f81293023d1245cd537"),
         mattermost_url=_env("MATTERMOST_URL", "https://meeting.ssafy.com").rstrip("/"),
         mattermost_token=_env("MATTERMOST_TOKEN"),

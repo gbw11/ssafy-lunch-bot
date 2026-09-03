@@ -210,8 +210,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         return 0
 
-    _log(f"\n전송 완료 ({send_message(settings, message)})")
-    return 0
+    result = send_message(settings, message)
+    _log(f"\n전송 완료 ({result})")
+    return 0 if result.ok else 1  # 일부 방이 실패하면 Actions에서도 실패로 보이게 합니다.
 
 
 if __name__ == "__main__":

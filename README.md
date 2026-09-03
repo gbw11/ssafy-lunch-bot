@@ -1,6 +1,6 @@
 # SSAFY 급식봇
 
-전기부산 점심 메뉴를 Mattermost **간식먹고노라라** 채널에 자동으로 보냅니다.
+전기부산 점심 메뉴를 Mattermost **간식먹고노라라** 채널(웹훅을 추가하면 여러 방)에 자동으로 보냅니다.
 
 ## 구조
 
@@ -13,7 +13,7 @@ lunchbot/
   welstory.py   사진 폴백 1 (웰스토리플러스 API)
   mealcloud.py  사진 폴백 2 (welstory-meal.cloud JSON API)
   message.py    Mattermost 마크다운 (사진 크기 통일)
-  notify.py     Mattermost 전송 (웹훅 / API 토큰)
+  notify.py     Mattermost 전송 (웹훅 여러 개 / API 토큰)
 ```
 
 사진은 **Welplan live API → welstory-meal.cloud → 웰스토리 API** 순으로 채우고, 요리 사진 대신
@@ -22,13 +22,21 @@ Welplan 과 어긋나는 날이 있고 코너 순서도 날마다 달라서, 코
 짝지웁니다(`models.menu_key`). 소스마다 원본 크기가 달라서 표에 넣을 때는
 `message.py`의 `IMAGE_WIDTH`/`IMAGE_HEIGHT`(기본 240×180)로 전부 같은 크기로 맞춥니다.
 
+## 보내는 방 늘리기
+
+방마다 웹훅이 따로라, 새 방에서 Incoming Webhook 을 만들어 URL 을
+`MATTERMOST_WEBHOOK_URLS` 에 **콤마로 이어 붙이면** 그 방에도 함께 나갑니다. 한 방이 실패해도
+나머지 방에는 보내고, 실패한 방이 있으면 종료 코드 1 로 끝납니다(`notify._send_all_webhooks`).
+웹훅 발급 절차는 다른 담당자에게 그대로 넘길 수 있게 따로 적어 뒀습니다 →
+[docs/add-mattermost-room.md](docs/add-mattermost-room.md)
+
 ## 자동 전송 (GitHub Actions)
 
 GitHub 자체 cron은 지연이 심해서 쓰지 않습니다. 외부 cron(cron-job.org)이 **평일
 10:39 KST**에 `daily-lunch.yml`을 `workflow_dispatch`로 트리거하고, 봇이 점심 사진이
 올라올 때까지(최대 `PHOTO_WAIT_MINUTES`분) 기다렸다가 대개 **11:00 전후**에 전송합니다.
 
-저장소 Secrets에 `MATTERMOST_WEBHOOK_URL`만 넣으면 동작합니다. 사진은 Welplan 과
+저장소 Secrets에 `MATTERMOST_WEBHOOK_URLS`(또는 예전 이름 `MATTERMOST_WEBHOOK_URL`)만 넣으면 동작합니다. 사진은 Welplan 과
 welstory-meal.cloud 로 채워지므로 별도 계정이 필요 없습니다. 나머지 설정은 워크플로 파일의
 `env` 블록에 있습니다.
 
