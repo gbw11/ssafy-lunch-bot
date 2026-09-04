@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import html
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import lru_cache
@@ -21,6 +22,10 @@ DEFAULT_SLUG = "전기부산"
 MAIN_HALL = "E32M"
 LUNCH_MEAL_TIME_ID = "2"
 TIMEOUT = 25
+# Welplan은 가끔 몇십 초씩 502/503을 낸다. 하루 한 번뿐인 실행이 단발 장애로
+# 통째로 날아가지 않게 여기서만 재시도한다.
+RETRY_STATUSES = frozenset({502, 503, 504})
+RETRY_BACKOFF_SECONDS = (5, 15, 30)
 
 # 전기부산 점심 코너. 다른 방 급식봇과 같게 A1·AA·BB·CC(별미공방).
 COURSE_STATIONS = {
@@ -334,18 +339,34 @@ def cards_to_day_menu(
     return menu
 
 
+def _get_menu_page(url: str) -> requests.Response:
+    """메뉴 원본 HTML을 받는다. 일시적 5xx·타임아웃은 백오프하며 다시 시도한다."""
+    last_error: Exception | None = None
+    for wait in (*RETRY_BACKOFF_SECONDS, None):
+        try:
+            response = requests.get(url, headers={"Accept": "text/html"}, timeout=30)
+            if response.status_code not in RETRY_STATUSES:
+                response.raise_for_status()
+                return response
+            last_error = requests.HTTPError(
+                f"{response.status_code} {response.reason} for url: {url}", response=response
+            )
+        except requests.RequestException as exc:
+            last_error = exc
+        if wait is None:
+            break
+        print(f"Welplan 응답 실패({last_error}) — {wait}초 후 재시도합니다.")
+        time.sleep(wait)
+    raise last_error
+
+
 def fetch_today_menu(
     restaurant_id: str = DEFAULT_RESTAURANT_ID,
     slug: str = DEFAULT_SLUG,
     timezone: str = DEFAULT_TIMEZONE,
 ) -> DayMenu:
     today = now_in(timezone)
-    response = requests.get(
-        restaurant_menu_url(restaurant_id, slug, today),
-        headers={"Accept": "text/html"},
-        timeout=30,
-    )
-    response.raise_for_status()
+    response = _get_menu_page(restaurant_menu_url(restaurant_id, slug, today))
     response.encoding = "utf-8"
 
     cards = parse_lunch_cards(response.text, restaurant_id)

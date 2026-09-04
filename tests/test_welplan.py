@@ -1,5 +1,6 @@
 from datetime import datetime
 
+import pytest
 import requests
 
 import lunchbot.welplan as welplan_module
@@ -233,3 +234,46 @@ def test_ramen_card_built_once_from_detail(monkeypatch) -> None:
     assert menu.ramen.items == ["신라면"]
     assert menu.ramen.kcal == "500kcal"
     assert len(dd_calls) == 1  # 같은 상세를 두 번 부르지 않습니다.
+
+
+class _Response503:
+    """Welplan이 일시적으로 내려간 상황(2026-09-04 장애)."""
+
+    ok = False
+    status_code = 503
+    reason = "Service Unavailable"
+
+    def raise_for_status(self):
+        raise requests.HTTPError("503 Server Error")
+
+
+def test_menu_page_retries_transient_503(monkeypatch) -> None:
+    """단발 503 하나로 하루치 급식표가 날아가선 안 됩니다."""
+    monkeypatch.setattr(welplan_module.time, "sleep", lambda _: None)
+    calls = []
+
+    def fake_get(url, **kwargs):
+        if "/restaurants/" in url:
+            calls.append(url)
+            return _Response503() if len(calls) == 1 else _FakePage(HTML)
+        return _Response500()  # 상세·live API는 이 테스트 관심사가 아닙니다.
+
+    monkeypatch.setattr(welplan_module.requests, "get", fake_get)
+    menu = welplan_module.fetch_today_menu()
+    assert len(calls) == 2  # 첫 번째 503 뒤 한 번 더 시도해서 성공
+    assert [item.station for item in menu.mains] == ["브라운그릴", "동방식객", "모던키친", "별미공방"]
+
+
+def test_menu_page_gives_up_after_retries(monkeypatch) -> None:
+    """계속 503이면 재시도를 다 쓰고 나서 실패해야 합니다(무한 대기 금지)."""
+    monkeypatch.setattr(welplan_module.time, "sleep", lambda _: None)
+    calls = []
+
+    def fake_get(url, **kwargs):
+        calls.append(url)
+        return _Response503()
+
+    monkeypatch.setattr(welplan_module.requests, "get", fake_get)
+    with pytest.raises(requests.HTTPError):
+        welplan_module.fetch_today_menu()
+    assert len(calls) == len(welplan_module.RETRY_BACKOFF_SECONDS) + 1
