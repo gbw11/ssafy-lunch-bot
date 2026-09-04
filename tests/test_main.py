@@ -121,3 +121,28 @@ def test_first_source_with_a_photo_wins(monkeypatch) -> None:
 
     assert menu.mains[0].image_url == REAL
     assert calls == ["first"]  # 다 채워졌으면 다음 소스는 아예 안 부릅니다.
+
+
+def test_main_skips_sending_on_a_holiday(monkeypatch) -> None:
+    """공휴일에는 메뉴 조회조차 하지 않고 조용히 끝나야 합니다."""
+    monkeypatch.setattr(cli, "load_settings", lambda: _settings())
+    monkeypatch.setattr(cli.workdays, "skip_reason", lambda day: "공휴일(추석)")
+    built: list[int] = []
+    monkeypatch.setattr(cli, "build_today_menu", lambda settings: built.append(1))
+    assert cli.main([]) == 0
+    assert built == []
+
+
+def test_ignore_holiday_flag_sends_anyway(monkeypatch) -> None:
+    """평일이 아닌 날 손으로 확인할 수 있어야 합니다."""
+    monkeypatch.setattr(cli, "load_settings", lambda: _settings())
+    monkeypatch.setattr(cli.workdays, "skip_reason", lambda day: "주말")
+    built: list[int] = []
+
+    def fake_build(settings):
+        built.append(1)
+        return DayMenu(date_label="2026-09-05")  # 코너가 없으니 전송까지는 안 갑니다.
+
+    monkeypatch.setattr(cli, "build_today_menu", fake_build)
+    assert cli.main(["--ignore-holiday"]) == 0
+    assert built == [1]

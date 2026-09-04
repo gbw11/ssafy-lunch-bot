@@ -10,7 +10,7 @@ from collections.abc import Callable
 
 import requests
 
-from lunchbot import mealcloud, welplan, welstory
+from lunchbot import mealcloud, welplan, welstory, workdays
 from lunchbot.config import Settings, load_settings
 from lunchbot.message import format_message
 from lunchbot.models import DayMenu, PhotoSet, StationMenu, now_in
@@ -160,6 +160,11 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         help=f"Welplan에서 식당을 검색합니다. 기본 검색어: {welplan.DEFAULT_SLUG}",
     )
     parser.add_argument(
+        "--ignore-holiday",
+        action="store_true",
+        help="주말·공휴일에도 그냥 보냅니다. (평일이 아닌 날 손으로 확인할 때)",
+    )
+    parser.add_argument(
         "--test-welstory",
         action="store_true",
         help="웰스토리 인증과 당일 사진 URL 조회만 테스트합니다.",
@@ -199,6 +204,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.list_restaurants is not None:
         results = welplan.search_restaurants(args.list_restaurants)
         print(json.dumps(results, ensure_ascii=False, indent=2))
+        return 0
+
+    reason = workdays.skip_reason(now_in(settings.timezone))
+    if reason and not args.ignore_holiday:
+        _log(f"오늘은 {reason}이라 급식이 없어 메시지를 보내지 않습니다.")
         return 0
 
     menu = build_today_menu(settings)

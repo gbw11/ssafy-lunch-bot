@@ -36,6 +36,12 @@ GitHub 자체 cron은 지연이 심해서 쓰지 않습니다. 외부 cron(cron-
 10:39 KST**에 `daily-lunch.yml`을 `workflow_dispatch`로 트리거하고, 봇이 점심 사진이
 올라올 때까지(최대 `PHOTO_WAIT_MINUTES`분) 기다렸다가 대개 **11:00 전후**에 전송합니다.
 
+주말과 공휴일에는 급식이 없어 메시지를 보내지 않습니다. cron 이 실수로 트리거해도
+봇이 스스로 걸러내고 메뉴 조회조차 하지 않습니다. 설날·추석·부처님오신날은 음력이라
+해마다 날짜가 달라서 `holidays` 패키지로 계산하고(대체공휴일 포함), 근로자의날(5/1)도
+쉬는 날로 봅니다. 제헌절(7/17)은 2008년부터 공휴일이 아니라 정상 전송합니다.
+평일이 아닌 날 손으로 확인하려면 `python -m lunchbot --ignore-holiday` 를 씁니다.
+
 저장소 Secrets에 `MATTERMOST_WEBHOOK_URLS`(또는 예전 이름 `MATTERMOST_WEBHOOK_URL`)만 넣으면 동작합니다. 사진은 Welplan 과
 welstory-meal.cloud 로 채워지므로 별도 계정이 필요 없습니다. 나머지 설정은 워크플로 파일의
 `env` 블록에 있습니다.
