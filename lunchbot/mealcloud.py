@@ -12,7 +12,7 @@ from urllib.parse import urljoin
 
 import requests
 
-from lunchbot.models import DEFAULT_TIMEZONE, menu_key, now_in
+from lunchbot.models import DEFAULT_TIMEZONE, PhotoSet, menu_key, now_in
 
 DEFAULT_URL = "https://welstory-meal.cloud"
 TIMEOUT = 30
@@ -27,6 +27,19 @@ def meals_url(base_url: str = DEFAULT_URL) -> str:
     return urljoin(base_url.rstrip("/") + "/", "api/meals")
 
 
+def _image_url(image: str, base_url: str) -> str:
+    if image.startswith("http"):
+        return image
+    return urljoin(base_url.rstrip("/") + "/", image.lstrip("/"))
+
+
+def _meals(payload: dict) -> list[dict]:
+    meals = payload.get("meals") if isinstance(payload, dict) else None
+    if not isinstance(meals, list):
+        raise MealCloudError("welstory-meal.cloud 응답에 meals 목록이 없습니다.")
+    return [meal for meal in meals if isinstance(meal, dict)]
+
+
 def meal_photos(payload: dict, base_url: str = DEFAULT_URL) -> dict[str, str]:
     """메뉴명 키 → 사진 URL.
 
@@ -35,19 +48,14 @@ def meal_photos(payload: dict, base_url: str = DEFAULT_URL) -> dict[str, str]:
     welplan 은 '모던키친'/'별미공방' 으로 부릅니다) 코너 순서도 날마다 달라서,
     코너명이나 순서가 아니라 **메뉴명**으로 짝지웁니다.
     """
-    meals = payload.get("meals") if isinstance(payload, dict) else None
-    if not isinstance(meals, list):
-        raise MealCloudError("welstory-meal.cloud 응답에 meals 목록이 없습니다.")
-
+    meals = _meals(payload)
     photos: dict[str, str] = {}
     ambiguous: set[str] = set()
     for meal in meals:
-        if not isinstance(meal, dict):
-            continue
         image = str(meal.get("imageUrl") or "").strip()
         if not image:
             continue  # 아직 실사진이 안 올라온 코너.
-        url = image if image.startswith("http") else urljoin(base_url.rstrip("/") + "/", image.lstrip("/"))
+        url = _image_url(image, base_url)
         description = str(meal.get("description") or "")
         candidates = (meal.get("name"), description, description.split(",")[0])
         for key in (menu_key(value) for value in candidates):
@@ -62,11 +70,38 @@ def meal_photos(payload: dict, base_url: str = DEFAULT_URL) -> dict[str, str]:
     return photos
 
 
+def meal_dishes(payload: dict, base_url: str = DEFAULT_URL) -> dict[str, frozenset[str]]:
+    """사진 URL → 그 사진에 딸린 메뉴·반찬 이름 키들.
+
+    대표 메뉴명이 welplan 과 어긋나는 날(예: `돈육순두부찌개` 를 `돈육두부찌개` 로
+    적는 날) 반찬 구성으로 코너를 찾아내기 위한 재료입니다.
+    """
+    dishes: dict[str, frozenset[str]] = {}
+    for meal in _meals(payload):
+        image = str(meal.get("imageUrl") or "").strip()
+        if not image:
+            continue
+        names = [meal.get("name"), *str(meal.get("description") or "").split(",")]
+        keys = frozenset(key for key in (menu_key(name) for name in names) if key)
+        if not keys:
+            continue
+        url = _image_url(image, base_url)
+        dishes[url] = dishes.get(url, frozenset()) | keys
+    return dishes
+
+
+def meal_photo_set(payload: dict, base_url: str = DEFAULT_URL) -> PhotoSet:
+    return PhotoSet(
+        by_key=meal_photos(payload, base_url),
+        dishes=meal_dishes(payload, base_url),
+    )
+
+
 def fetch_photos(
     base_url: str = DEFAULT_URL,
     timezone: str = DEFAULT_TIMEZONE,
     date: datetime | None = None,
-) -> dict[str, str]:
+) -> PhotoSet:
     day = date or now_in(timezone)
     try:
         response = requests.get(
@@ -81,4 +116,4 @@ def fetch_photos(
         raise MealCloudError(f"welstory-meal.cloud 연결 실패: {exc}") from exc
     except ValueError as exc:
         raise MealCloudError("welstory-meal.cloud 응답이 JSON이 아닙니다.") from exc
-    return meal_photos(payload, base_url)
+    return meal_photo_set(payload, base_url)

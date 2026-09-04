@@ -13,7 +13,7 @@ import requests
 from lunchbot import mealcloud, welplan, welstory
 from lunchbot.config import Settings, load_settings
 from lunchbot.message import format_message
-from lunchbot.models import DayMenu, StationMenu, now_in
+from lunchbot.models import DayMenu, PhotoSet, StationMenu, now_in
 from lunchbot.notify import send_message
 
 # (로그에 쓸 이름, 사진 조회, 그 소스가 내는 예외)
@@ -139,9 +139,10 @@ def build_today_menu(settings: Settings) -> DayMenu:
     return menu
 
 
-def _report_photos(label: str, photos: dict[str, str]) -> int:
-    print(f"{label} 연결 OK (사진 {len(photos)}개)")
-    for station, url in photos.items():
+def _report_photos(label: str, photos) -> int:
+    by_key = PhotoSet.of(photos).by_key
+    print(f"{label} 연결 OK (사진 {len(by_key)}개)")
+    for station, url in by_key.items():
         print(f"  {station}: {url.rsplit('/', 1)[-1] if url else '(사진 없음)'}")
     return 0
 
