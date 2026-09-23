@@ -7,16 +7,21 @@ BOB SSAFY(Streamlit)를 대신합니다. 브라우저 없이 JSON API 한 번만
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from urllib.parse import urljoin
 
 import requests
 
-from lunchbot.models import DEFAULT_TIMEZONE, PhotoSet, menu_key, now_in
+from lunchbot.models import DEFAULT_TIMEZONE, DayMenu, PhotoSet, StationMenu, menu_key, now_in
 
 DEFAULT_URL = "https://welstory-meal.cloud"
 TIMEOUT = 30
 HEADERS = {"Accept": "application/json"}
+CALORIE_DIGITS_RE = re.compile(r"[\d,]+")
+# 대표 메뉴명 없이 넘어오는 코너는 걸러야 하는 다른 방식의 마이보글/추가배식대 이름.
+RAMEN_STATION = "마이보글"
+EXTRA_STATION = "추가배식대"
 
 
 class MealCloudError(RuntimeError):
@@ -97,12 +102,56 @@ def meal_photo_set(payload: dict, base_url: str = DEFAULT_URL) -> PhotoSet:
     )
 
 
-def fetch_photos(
+def _calories(text: str) -> int:
+    match = CALORIE_DIGITS_RE.search(text or "")
+    return int(match.group().replace(",", "")) if match else 0
+
+
+def _station_menu(meal: dict, base_url: str) -> StationMenu:
+    """코너 하나를 `StationMenu`로. 대표 메뉴명은 description 첫 항목과 같아 뺍니다."""
+    items = [part.strip() for part in str(meal.get("description") or "").split(",")]
+    image = str(meal.get("imageUrl") or "").strip()
+    calories = _calories(str(meal.get("calorie") or ""))
+    return StationMenu(
+        station=str(meal.get("courseName") or "").strip(),
+        name=str(meal.get("name") or "").strip(),
+        kcal=f"{calories:,}kcal" if calories else "",
+        items=[item for item in items[1:] if item],
+        image_url=_image_url(image, base_url) if image else "",
+    )
+
+
+def day_menu(payload: dict, date_label: str, base_url: str = DEFAULT_URL) -> DayMenu:
+    """Welplan이 죽었을 때 메뉴 텍스트+사진을 통째로 이 소스에서 만듭니다.
+
+    이 사이트가 부르는 코너명이 welplan과 어긋나는 날이 있으므로(모듈 상단 설명
+    참고) 표에는 이 소스가 부르는 코너 이름 그대로 찍힙니다.
+    """
+    menu = DayMenu(date_label=date_label)
+    for meal in _meals(payload):
+        station = _station_menu(meal, base_url)
+        if not station.name:
+            continue
+        if station.station == RAMEN_STATION:
+            menu.ramen = station
+        elif station.station == EXTRA_STATION:
+            menu.extra = station
+        else:
+            menu.mains.append(station)
+    return menu
+
+
+def fetch_today_menu(
     base_url: str = DEFAULT_URL,
     timezone: str = DEFAULT_TIMEZONE,
     date: datetime | None = None,
-) -> PhotoSet:
+) -> DayMenu:
     day = date or now_in(timezone)
+    payload = _fetch_meals_payload(base_url, day)
+    return day_menu(payload, f"{day:%Y-%m-%d}", base_url)
+
+
+def _fetch_meals_payload(base_url: str, day: datetime) -> dict:
     try:
         response = requests.get(
             meals_url(base_url),
@@ -111,9 +160,18 @@ def fetch_photos(
             timeout=TIMEOUT,
         )
         response.raise_for_status()
-        payload = response.json()
+        return response.json()
     except requests.RequestException as exc:
         raise MealCloudError(f"welstory-meal.cloud 연결 실패: {exc}") from exc
     except ValueError as exc:
         raise MealCloudError("welstory-meal.cloud 응답이 JSON이 아닙니다.") from exc
+
+
+def fetch_photos(
+    base_url: str = DEFAULT_URL,
+    timezone: str = DEFAULT_TIMEZONE,
+    date: datetime | None = None,
+) -> PhotoSet:
+    day = date or now_in(timezone)
+    payload = _fetch_meals_payload(base_url, day)
     return meal_photo_set(payload, base_url)

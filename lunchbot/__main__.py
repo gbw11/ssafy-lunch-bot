@@ -122,16 +122,27 @@ def _fill_from_sources(menu: DayMenu, sources: list[PhotoSource], *, quiet: bool
         menu.fill_photos(photos, _needs_photo)
 
 
+def _fetch_menu(settings: Settings, restaurant_code: str) -> DayMenu:
+    """메뉴는 Welplan에서. Welplan이 죽어 있으면(SSL 만료 등) mealcloud로 통째 대체합니다."""
+    try:
+        return welplan.fetch_today_menu(
+            restaurant_id=restaurant_code,
+            slug=settings.welstory_campus or welplan.DEFAULT_SLUG,
+            timezone=settings.timezone,
+        )
+    except requests.RequestException as exc:
+        if not settings.mealcloud_enabled:
+            raise
+        _log(f"Welplan 메뉴 조회 실패, welstory-meal.cloud로 대체합니다: {exc}")
+        return mealcloud.fetch_today_menu(settings.mealcloud_url, settings.timezone)
+
+
 def build_today_menu(settings: Settings) -> DayMenu:
     """메뉴는 Welplan에서, 빠진 사진은 `_photo_sources` 순서대로 채웁니다."""
     restaurant_code = welplan.restaurant_code(
         settings.welstory_campus, settings.welstory_restaurant_code
     )
-    menu = welplan.fetch_today_menu(
-        restaurant_id=restaurant_code,
-        slug=settings.welstory_campus or welplan.DEFAULT_SLUG,
-        timezone=settings.timezone,
-    )
+    menu = _fetch_menu(settings, restaurant_code)
     sources = _photo_sources(settings, restaurant_code)
     _wait_for_lunch_photos(menu, settings, restaurant_code, sources)
     _fill_from_sources(menu, sources)

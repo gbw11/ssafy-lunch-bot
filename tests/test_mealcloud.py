@@ -2,8 +2,60 @@
 
 from __future__ import annotations
 
-from lunchbot.mealcloud import DEFAULT_URL, meal_photo_set, meal_photos, meals_url
+from lunchbot.mealcloud import DEFAULT_URL, day_menu, meal_photo_set, meal_photos, meals_url
 from lunchbot.models import DayMenu, StationMenu
+
+# 2026-09-23 실제 응답을 줄인 것(welplan 인증서 만료로 메뉴 텍스트 폴백이 필요했던 날).
+FULL_DAY_PAYLOAD = {
+    "date": "2026-09-23",
+    "status": "READY",
+    "meals": [
+        {
+            "id": "meal-01",
+            "courseName": "브라운그릴",
+            "name": "[테이스티가든]저염비빔밥&풋고추양념장",
+            "description": "[테이스티가든]저염비빔밥&풋고추양념장,나박물김치,두부구이,계란말이,미숫가루",
+            "imageUrl": "/api/meals/2026-09-23/images/meal-01?v=aaa",
+            "calorie": "912 kcal",
+        },
+        {
+            "id": "meal-05",
+            "courseName": "마이보글",
+            "name": "[라면 14종 중 택1]",
+            "description": "[라면 14종 중 택1],사리곰탕,까르보불닭볶음면",
+            "imageUrl": "/api/meals/2026-09-23/images/meal-05?v=eee",
+            "calorie": "6,985 kcal",
+        },
+        {
+            "id": "meal-06",
+            "courseName": "추가배식대",
+            "name": "닭가슴살파프리카냉채",
+            "description": "닭가슴살파프리카냉채,그린샐러드,포기김치",
+            "imageUrl": "/api/meals/2026-09-23/images/meal-06?v=fff",
+            "calorie": "220 kcal",
+        },
+    ],
+}
+
+
+def test_day_menu_builds_full_menu_text_and_photos_from_mealcloud() -> None:
+    """welplan이 죽었을 때도 코너 텍스트+사진을 통째로 재구성할 수 있어야 합니다."""
+    menu = day_menu(FULL_DAY_PAYLOAD, date_label="2026-09-23")
+
+    assert len(menu.mains) == 1
+    main = menu.mains[0]
+    assert main.station == "브라운그릴"
+    assert main.name == "[테이스티가든]저염비빔밥&풋고추양념장"
+    assert main.items == ["나박물김치", "두부구이", "계란말이", "미숫가루"]
+    assert main.kcal == "912kcal"
+    assert main.image_url.endswith("meal-01?v=aaa")
+
+    assert menu.ramen is not None
+    assert menu.ramen.station == "마이보글"
+    assert menu.ramen.kcal == "6,985kcal"  # 콤마 섞인 칼로리도 파싱됩니다.
+
+    assert menu.extra is not None
+    assert menu.extra.station == "추가배식대"
 
 # 2026-09-01 실제 응답을 줄인 것. 이 사이트는 3·4번 코너를 '한식사계'/'모던키친' 으로
 # 부르는데 welplan 은 같은 메뉴를 '모던키친'/'별미공방' 이라고 부릅니다.

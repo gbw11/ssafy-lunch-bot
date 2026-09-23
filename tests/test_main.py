@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import requests
+
 import lunchbot.__main__ as cli
 from lunchbot.config import Settings
 from lunchbot.models import DayMenu, StationMenu
@@ -146,3 +148,31 @@ def test_ignore_holiday_flag_sends_anyway(monkeypatch) -> None:
     monkeypatch.setattr(cli, "build_today_menu", fake_build)
     assert cli.main(["--ignore-holiday"]) == 0
     assert built == [1]
+
+
+def test_fetch_menu_falls_back_to_mealcloud_when_welplan_is_down(monkeypatch) -> None:
+    """welplan 인증서 만료 같은 장애에도 mealcloud로 메뉴 전체를 대신 가져와야 합니다."""
+
+    def broken_welplan(**kwargs):
+        raise requests.exceptions.SSLError("certificate has expired")
+
+    fallback_menu = DayMenu(date_label="2026-09-23")
+    monkeypatch.setattr(cli.welplan, "fetch_today_menu", broken_welplan)
+    monkeypatch.setattr(cli.mealcloud, "fetch_today_menu", lambda url, tz: fallback_menu)
+
+    settings = _settings(mealcloud_enabled=True, mealcloud_url="https://welstory-meal.cloud")
+    assert cli._fetch_menu(settings, "REST000595") is fallback_menu
+
+
+def test_fetch_menu_reraises_when_mealcloud_fallback_is_disabled(monkeypatch) -> None:
+    def broken_welplan(**kwargs):
+        raise requests.exceptions.SSLError("certificate has expired")
+
+    monkeypatch.setattr(cli.welplan, "fetch_today_menu", broken_welplan)
+    settings = _settings(mealcloud_enabled=False)
+    try:
+        cli._fetch_menu(settings, "REST000595")
+    except requests.exceptions.SSLError:
+        pass
+    else:
+        raise AssertionError("mealcloud 폴백이 꺼져 있으면 원래 예외가 그대로 올라가야 합니다.")
